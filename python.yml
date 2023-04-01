@@ -1,0 +1,26 @@
+---
+- name: Define Python versions to install
+  set_fact:
+    target_python_versions:
+      - "3.7"
+      - "3.8"
+      - "3.9"
+      - "3.10"
+      - "3.11"
+    global_version: "3.11"
+
+- name: Define common packages to install
+  set_fact:
+    target_python_packages:
+      - "virtualenv"
+
+- name: Install pyenv, Python versions, and packages
+  shell: |
+    curl --proto '=https' --tlsv1.2 -sSf https://pyenv.run | bash
+    eval "$(pyenv init -)"
+    pyenv install {{ target_python_versions | join(' ') }}
+    pyenv global {{ global_version }}
+    pip3 install {{ target_python_packages | join(' ') }}
+  args:
+    executable: /usr/bin/zsh
+

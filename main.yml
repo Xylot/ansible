@@ -1,0 +1,25 @@
+---
+- name: Ubuntu Development Environment Setup
+  hosts: localhost
+  gather_facts: yes
+
+  vars:
+    - workspace_directory: /home/seraub/workspace
+      zsh_directory: "{{ workspace_directory }}/.zsh"
+
+  pre_tasks:
+    - name: Get configuration environment variables set by the dotfiles repo
+      shell: env -i /usr/bin/zsh -c 'source {{ zsh_directory }}/.zansible && env'
+      register: dotfiles_environment
+
+    - name: Parse dotfiles configuration environment into a dictionary
+      set_fact:
+        dotfiles_environment_variables: "{{ dotfiles_environment_variables | default({}) | combine({item.split('=')[0]: '='.join(item.split('=')[1:])}) }}"
+      loop: "{{ dotfiles_environment.stdout_lines }}"
+
+  tasks:
+    - name: Install programming languages and dependencies
+      block:
+        - name: Python
+          include_tasks: python.yml
+      environment: "{{ dotfiles_environment_variables }}"
