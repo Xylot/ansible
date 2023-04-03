@@ -19,7 +19,14 @@
 
   tasks:
     - name: Install programming languages and dependencies
+      environment: "{{ dotfiles_environment_variables }}"
       block:
         - name: Python
-          include_tasks: python.yml
-      environment: "{{ dotfiles_environment_variables }}"
+          include_tasks: languages/python.yml
+
+        - name: Rust
+          include_tasks: languages/rust.yml
+
+        - name: Node
+          include_tasks: languages/node.yml
+

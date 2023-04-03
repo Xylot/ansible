@@ -7,7 +7,7 @@
       - "3.9"
       - "3.10"
       - "3.11"
-    global_version: "3.11"
+    default_python_version: "3.11"
 
 - name: Define common packages to install
   set_fact:
@@ -19,7 +19,7 @@
     curl --proto '=https' --tlsv1.2 -sSf https://pyenv.run | bash
     eval "$(pyenv init -)"
     pyenv install {{ target_python_versions | join(' ') }}
-    pyenv global {{ global_version }}
+    pyenv global {{ default_python_version }}
     pip3 install {{ target_python_packages | join(' ') }}
   args:
     executable: /usr/bin/zsh
