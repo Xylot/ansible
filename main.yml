@@ -4,7 +4,7 @@
   gather_facts: yes
 
   vars:
-    - workspace_directory: /home/seraub/workspace
+    - workspace_directory: "/home/ {{ ansible_user_id }} /workspace"
       zsh_directory: "{{ workspace_directory }}/.zsh"
 
   pre_tasks:
@@ -29,4 +29,8 @@
 
         - name: Node
           include_tasks: languages/node.yml
+
+        - name: Tools
+          include_tasks: "{{ item }}"
+          with_fileglob: tools/*.yml
 
