@@ -136,11 +136,6 @@
       when: ansible_facts.os_family != "Windows"
       ignore_errors: "{{ ansible_check_mode }}"
 
-      # - name: Register zsh environment variable
-      #   shell: DISABLE_ZSH_PLUGINS=1 zsh -c 'env'
-      #   register: ZSH_ENV_VARS
-      #
-
     # ----------------------------------------
     # Package name overrides
     # ----------------------------------------
