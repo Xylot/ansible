@@ -165,7 +165,6 @@
           - ripgrep
           - exa
           - bat
-          - fzf
           - zoxide
           - "{{ fdfind }}"
         state: present
