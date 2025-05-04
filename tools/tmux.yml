@@ -1,5 +1,0 @@
-- name: Install tmux
-  package: tmux
-  state: present
-  become: yes
-

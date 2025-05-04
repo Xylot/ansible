@@ -1,0 +1,360 @@
+---
+- name: Bootstrap dev tools & dotfiles
+  hosts: localhost
+  gather_facts: yes
+  become: no
+
+  vars:
+    workspace_directory: "{{ ansible_user_dir }}/workspace"
+    dotfiles_repo_url: "https://github.com/xylot/dotfiles"
+    dotfiles_target_directory: "{{ workspace_directory }}/.dotfiles"
+    nvim_head_url: "https://github.com/neovim/neovim/releases/download/nightly/nvim-linux-x86_64.appimage"
+    nvim_download_dir: "{{ ansible_user_dir }}/.cache/nvim-appimage"
+    nvim_download_path: "{{ ansible_user_dir }}/.cache/nvim-appimage/nvim.appimage"
+    nvim_appimage_path: "{{ ansible_user_dir }}/.cache/nvim-appimage/nvim.appimage/nvim-linux-x86_64.appimage"
+    nvim_squashfs_apprun_path: "{{ ansible_user_dir }}/.cache/nvim-appimage/squashfs-root/AppRun"
+    fdfind: "fd-find"
+
+  tasks:
+    # ----------------------------------------
+    # Install locales
+    # ----------------------------------------
+    - name: Install locales package
+      ansible.builtin.package:
+        name: locales
+        state: present
+      when: ansible_os_family == 'Debian'
+
+    - name: Enable en_US locale
+      become: true
+      ansible.builtin.shell: |
+        sed -i 's/^# *\(en_US.UTF-8\)/\1/' /etc/locale.gen
+        locale-gen
+      when: ansible_os_family == 'Debian'
+
+    # ----------------------------------------
+    # Install Git
+    # ----------------------------------------
+    - name: Install Git on Linux & macOS
+      ansible.builtin.package:
+        name: git
+        state: present
+      when: ansible_facts.os_family not in ['Windows', 'Darwin']
+
+    - name: Install Git on Windows via Chocolatey
+      chocolatey.chocolatey.win_chocolatey:
+        name: git
+        state: present
+      when: ansible_facts.os_family == "Windows"
+
+    # ----------------------------------------
+    # Set up zsh
+    # ----------------------------------------
+    - name: Install Zsh
+      ansible.builtin.package:
+        name:
+          - zsh
+        state: present
+        update_cache: yes
+      become: yes
+      when: ansible_facts.os_family not in ['Windows', 'Darwin']
+
+    - name: Install zgenom
+      ansible.builtin.git:
+        repo: https://github.com/jandamm/zgenom
+        dest: ~/.config/zgenom
+        depth: 1
+      when: ansible_facts.os_family not in ['Windows']
+
+    - name: Install Oh My Zsh
+      ansible.builtin.git:
+        repo: https://github.com/ohmyzsh/ohmyzsh
+        dest: ~/.config/oh-my-zsh
+        depth: 1
+      when: ansible_facts.os_family not in ['Windows']
+
+    - name: Change user shell to zsh
+      become: true
+      ansible.builtin.user:
+        name: "{{ ansible_user_id }}"
+        shell: /bin/zsh
+      when: ansible_facts.os_family not in ['Windows', 'darwin']
+
+    - name: Change default shell to zsh
+      become: yes
+      user:
+        name: "{{ ansible_user_id}}"
+        shell: /usr/bin/zsh
+      when: ansible_facts.os_family not in ['Windows', 'darwin']
+
+    # ----------------------------------------
+    # Set up dotfiles
+    # ----------------------------------------
+    - name: Clone dotfiles on Unix
+      ansible.builtin.git:
+        repo: "{{ dotfiles_repo_url }}"
+        dest: "{{ dotfiles_target_directory }}"
+        depth: 1
+        update: yes
+        recursive: yes
+      become: false
+      when: ansible_facts.os_family != "Windows"
+
+    - name: Create nvim config symlink
+      become: true
+      ansible.builtin.file:
+        src: "{{ dotfiles_target_directory }}/.config/nvim"
+        dest: "{{ ansible_user_dir }}/.config/nvim"
+        state: link
+      when: ansible_facts.os_family != "Windows"
+      ignore_errors: "{{ ansible_check_mode }}"
+
+    - name: Create tmux config symlink
+      become: true
+      ansible.builtin.file:
+        src: "{{ dotfiles_target_directory }}/.config/tmux"
+        dest: "{{ ansible_user_dir }}/.config/tmux"
+        state: link
+      when: ansible_facts.os_family != "Windows"
+      ignore_errors: "{{ ansible_check_mode }}"
+
+    - name: Create zsh config symlink
+      become: true
+      ansible.builtin.file:
+        src: "{{ dotfiles_target_directory }}/.config/zsh"
+        dest: "{{ ansible_user_dir }}/.config/zsh"
+        state: link
+      when: ansible_facts.os_family != "Windows"
+      ignore_errors: "{{ ansible_check_mode }}"
+
+    - name: Create zsh env symlink
+      become: true
+      ansible.builtin.file:
+        src: "{{ dotfiles_target_directory }}/.config/zsh/.zshenv"
+        dest: "{{ ansible_user_dir }}/.zshenv"
+        state: link
+      when: ansible_facts.os_family != "Windows"
+      ignore_errors: "{{ ansible_check_mode }}"
+
+      # - name: Register zsh environment variable
+      #   shell: DISABLE_ZSH_PLUGINS=1 zsh -c 'env'
+      #   register: ZSH_ENV_VARS
+      #
+
+    # ----------------------------------------
+    # Package name overrides
+    # ----------------------------------------
+    - name: Override fd-find for Arch
+      ansible.builtin.set_fact:
+        fdfind: fd
+      when: ansible_os_family == 'Archlinux'
+
+    - name: Override Debian packages
+      ansible.builtin.set_fact:
+        procs: rust-procs
+        dust: rust-du-dust
+      when: ansible_os_family == 'Debian'
+
+    # ----------------------------------------
+    # Package installs
+    # ----------------------------------------
+    - name: Install packages
+      become: true
+      ansible.builtin.package:
+        name:
+          - curl
+          - unzip
+          - lua5.3
+          - luarocks
+          - tmux
+          - ripgrep
+          - exa
+          - bat
+          - fzf
+          - zoxide
+          - "{{ fdfind }}"
+        state: present
+      when: ansible_facts.os_family not in ['Windows', 'Darwin']
+
+    - name: Check for existing Neovim AppImage
+      ansible.builtin.stat:
+        path: "{{ nvim_download_path }}"
+      register: nvim_appimage
+      when: ansible_facts.os_family not in ["Darwin", "Windows"]
+
+    - name: Ensure Neovim appimage download directory exists
+      ansible.builtin.file:
+        path: "{{ nvim_download_dir }}"
+        state: directory
+      when: ansible_facts.os_family not in ["Darwin", "Windows"] and not nvim_appimage.stat.exists
+
+    - name: Download Neovim HEAD AppImage
+      ansible.builtin.get_url:
+        url: "{{ nvim_head_url }}"
+        dest: "{{ nvim_download_path }}"
+        force: yes
+      when: ansible_facts.os_family not in ["Darwin", "Windows"] and not nvim_appimage.stat.exists
+
+    - name: Set up Neovim appimage executable
+      ansible.builtin.file:
+        path: "{{ nvim_download_path }}"
+        mode: u+x
+      when: ansible_facts.os_family not in ["Darwin", "Windows"]
+
+    - name: Extract Neovim appimage
+      ansible.builtin.shell: "{{ nvim_download_path }} --appimage-extract"
+      args:
+        chdir: "{{ nvim_download_dir }}"
+      when: ansible_facts.os_family not in ["Darwin", "Windows"]
+
+    - name: Link Neovim extracted appimage to bin
+      become: true
+      ansible.builtin.file:
+        src: "{{ nvim_squashfs_apprun_path }}"
+        dest: /usr/local/bin/nvim
+        state: link
+      when: ansible_facts.os_family not in ["Darwin", "Windows"]
+
+    - name: Install dust on Arch
+      become: true
+      ansible.builtin.package:
+        name: dust
+        state: present
+      when: ansible_os_family == 'Archlinux'
+
+    - name: Check if dust is already installed on non Debian
+      ansible.builtin.shell: dust --version
+      register: dust_rc
+      failed_when: false
+      changed_when: false
+      when: ansible_os_family != 'Archlinux'
+
+    - name: Get latest dust release info
+      ansible.builtin.uri:
+        url: https://api.github.com/repos/bootandy/dust/releases/latest
+        return_content: true
+      register: dust_release
+      when: ansible_os_family != 'Archlinux' and dust_rc.rc != 0
+
+    - name: Determine latest dust release URL
+      set_fact:
+        dust_latest_release_url: "{{ dust_latest_release.browser_download_url }}"
+      vars:
+        dust_latest_release: "{{ dust_release.json|to_json|from_json|json_query('assets[?ends_with(name,`x86_64-unknown-linux-gnu.tar.gz`)]')|first }}"
+      when: ansible_os_family != 'Archlinux' and dust_rc.rc != 0
+
+    - name: Install dust from source
+      become: true
+      ansible.builtin.unarchive:
+        src: "{{ dust_latest_release_url }}"
+        dest: /usr/local/bin
+        extra_opts:
+          - --strip=1
+          - --wildcards
+          - '*/dust'
+        remote_src: true
+      when: ansible_os_family != 'Archlinux' and dust_rc.rc != 0
+
+    - name: Install procs on non Debian
+      become: true
+      ansible.builtin.package:
+        name: procs
+        state: present
+      when: ansible_os_family != 'Debian'
+
+    - name: Check if procs is already installed on Debian
+      ansible.builtin.shell: procs --version
+      register: procs_rc
+      failed_when: false
+      changed_when: false
+      when: ansible_os_family == 'Debian'
+
+    - name: Get latest procs release info
+      ansible.builtin.uri:
+        url: https://api.github.com/repos/dalance/procs/releases/latest
+        return_content: true
+      register: procs_release
+      when: ansible_os_family == 'Debian' and procs_rc.rc != 0
+
+    - name: Determine latest procs release URL
+      set_fact:
+        procs_latest_release_url: "{{ procs_latest_release.browser_download_url }}"
+      vars:
+        procs_latest_release: "{{ procs_release.json|to_json|from_json|json_query('assets[?ends_with(name,`x86_64-linux.zip`)]')|first }}"
+      when: ansible_os_family != 'Archlinux' and procs_rc.rc != 0
+
+    - name: Install procs from source
+      become: true
+      ansible.builtin.unarchive:
+        src: "{{ procs_latest_release_url }}"
+        dest: /usr/local/bin
+        remote_src: true
+      when: ansible_os_family != 'Archlinux' and procs_rc.rc != 0
+
+    # ----------------------------------------
+    # Language Installs
+    # ----------------------------------------
+    - name: Install fnm (Fast Node Manager)
+      become: true
+      ansible.builtin.shell: curl -fsSL https://fnm.vercel.app/install | zsh -s -- --skip-shell
+      args:
+        creates: "{{ ansible_user_dir }}/.local/share/fnm"
+
+    - name: Install Node versions
+      ansible.builtin.shell: |
+        "{{ ansible_user_dir }}/.local/share/fnm/fnm" install --latest
+        "{{ ansible_user_dir }}/.local/share/fnm/fnm" install --lts
+        "{{ ansible_user_dir }}/.local/share/fnm/fnm" default latest
+      args:
+        executable: /usr/bin/zsh
+
+    - name: Install Python versions
+      ansible.builtin.shell: uv python install {{ item }} --preview
+      with_items:
+        - "3.8"
+        - "3.9"
+        - "3.10"
+        - "3.11"
+        - "3.12"
+        - "3.13"
+        - "3.14"
+
+    - name: Determine latest stable Python version
+      ansible.builtin.shell: uv python list | cut -d' ' -f1 | grep -io -P '\d\.\d{1,2}\.\d{1,2}-' | grep -io -P '\d\.\d{1,2}' | head -n1
+      register: latest_stable_python_version
+
+    - name: Set latest stable python version to default
+      ansible.builtin.shell: "uv python install {{ latest_stable_python_version.stdout }} --preview --default"
+
+    - name: Install python3-venv on Debian
+      become: true
+      ansible.builtin.package:
+        name: python3-venv
+        state: present
+      when: ansible_os_family == 'Debian'
+
+    # Workaround to solve Mason/uv conflict
+    #
+    # uv managed python isntallations do not work with the command:
+    #   python -m venv --system-site-packages venv
+    #
+    # Mason currently relies on this to install pip packages
+    # Mason also adds the '/../nvim/mason/bin/ directory to the top of the
+    # PATH environment variable at runtime so we can just link the
+    # system python there to override uv-managed installations being detected
+    - name: Symlink system Python to Neovim Mason bin directory
+      ansible.builtin.file:
+        src: "/usr/bin/python3"
+        dest: "{{ ansible_user_dir }}/.local/share/nvim/mason/bin/python3"
+        force: true
+        state: link
+      when: ansible_facts.os_family != "Windows"
+      ignore_errors: "{{ ansible_check_mode }}"
+
+    - name: Install Rust
+      become: true
+      ansible.builtin.shell: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | zsh -s -- -y
+      args:
+        creates:
+          - "{{ ansible_user_dir }}/.local/share/rustup"
+          - "{{ ansible_user_dir }}/.local/share/cargo"
